@@ -26180,6 +26180,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   teammate: {fileID: 2060884496}
+  targetRegistry: {fileID: 0}
+  commandCamera: {fileID: 0}
+  mouseRayDistance: 200
+  mouseRayMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  defaultMoveStopDistance: 1.2
 --- !u!4 &794280191
 Transform:
   m_ObjectHideFlags: 0
@@ -37312,7 +37319,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pushToTalkKey: 118
-  voiceInputProviderBehaviour: {fileID: 0}
+  voiceInputProviderBehaviour: {fileID: 1529947530}
   commandRouter: {fileID: 794280190}
 --- !u!114 &1122809392
 MonoBehaviour:
@@ -37327,6 +37334,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulatedTranscript: follow
+  consumeOnce: 1
 --- !u!4 &1122856101 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8717893220990095113, guid: 7970c12d6b19a504fbc82353b8a43abe, type: 3}
@@ -48874,6 +48882,52 @@ MonoBehaviour:
   metalHitSound: {fileID: 0}
   characterHitSound: {fileID: 0}
   destructionSound: {fileID: 1898444730}
+--- !u!1 &1529947529
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1529947531}
+  - component: {fileID: 1529947530}
+  m_Layer: 0
+  m_Name: Speaker
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1529947530
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1529947529}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 947d72d2e90247218607069bd09116d2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  initialSilenceTimeoutSeconds: 5
+  autoSilenceTimeoutSeconds: 3
+--- !u!4 &1529947531
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1529947529}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 20.395754, y: 7.0912685, z: -22.03303}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1531180963
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -71211,5 +71265,6 @@ SceneRoots:
   - {fileID: 43100690}
   - {fileID: 938834926}
   - {fileID: 794280191}
+  - {fileID: 1529947531}
   - {fileID: 1500340362}
   - {fileID: 1122809389}
