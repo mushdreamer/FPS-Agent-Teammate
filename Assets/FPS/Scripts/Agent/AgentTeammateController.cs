@@ -19,6 +19,7 @@ public class AgentTeammateController : MonoBehaviour
 
     [Header("Animation")]
     [SerializeField] private Animator animator;
+    [SerializeField] private CharacterAnimationController characterAnimationController;
     [SerializeField] private string speedParam = "Speed";
     [SerializeField] private string runParam = "IsRunning";
     [SerializeField] private float runThreshold = 0.2f;
@@ -45,6 +46,16 @@ public class AgentTeammateController : MonoBehaviour
         if (animator == null)
         {
             animator = GetComponentInChildren<Animator>();
+        }
+
+        if (characterAnimationController == null)
+        {
+            characterAnimationController = GetComponentInChildren<CharacterAnimationController>();
+        }
+
+        if (characterAnimationController != null)
+        {
+            characterAnimationController.SetUsePlayerInput(false);
         }
 
         if (shootOrigin == null)
@@ -123,7 +134,11 @@ public class AgentTeammateController : MonoBehaviour
         Quaternion lookRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
         transform.rotation = lookRotation;
 
-        if (animator != null && !string.IsNullOrEmpty(shootTrigger))
+        if (characterAnimationController != null)
+        {
+            characterAnimationController.TriggerShoot();
+        }
+        else if (animator != null && !string.IsNullOrEmpty(shootTrigger))
         {
             animator.SetTrigger(shootTrigger);
         }
@@ -168,12 +183,18 @@ public class AgentTeammateController : MonoBehaviour
 
     private void UpdateAnimator()
     {
+        float speed = navMeshAgent.velocity.magnitude;
+        bool isRunning = speed > runThreshold;
+
+        if (characterAnimationController != null)
+        {
+            characterAnimationController.SetRunning(isRunning);
+        }
+
         if (animator == null)
         {
             return;
         }
-
-        float speed = navMeshAgent.velocity.magnitude;
 
         if (!string.IsNullOrEmpty(speedParam))
         {
@@ -182,7 +203,7 @@ public class AgentTeammateController : MonoBehaviour
 
         if (!string.IsNullOrEmpty(runParam))
         {
-            animator.SetBool(runParam, speed > runThreshold);
+            animator.SetBool(runParam, isRunning);
         }
     }
 }
