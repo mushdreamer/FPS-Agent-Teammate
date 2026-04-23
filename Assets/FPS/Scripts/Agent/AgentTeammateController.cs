@@ -23,15 +23,19 @@ public class AgentTeammateController : MonoBehaviour
     [SerializeField] private string speedParam = "Speed";
     [SerializeField] private string runParam = "IsRunning";
     [SerializeField] private float runThreshold = 0.2f;
+    [SerializeField] private bool forcePlayShootState = true;
+    [SerializeField] private string shootStateName = "demo_combat_shoot";
 
     [Header("Attack")]
     [SerializeField] private Transform shootOrigin;
     [SerializeField] private float attackRange = 120f;
     [SerializeField] private int fallbackAttackDamage = 20;
     [SerializeField] private float fireCooldown = 0.35f;
-    [SerializeField] private string shootTrigger = "shoot";
+    [SerializeField] private float attackMovePauseSeconds = 0.15f;
+    [SerializeField] private string shootTrigger = "Shoot";
     [SerializeField] private LayerMask attackMask = ~0;
     [SerializeField] private ParticleSystem muzzleFlash;
+    [SerializeField] private GameObject hitImpactEffect;
     [SerializeField] private WeaponDamageTable damageTable;
     [SerializeField] private WeaponType teammateWeaponType = WeaponType.Auto;
 
@@ -39,6 +43,7 @@ public class AgentTeammateController : MonoBehaviour
     private AgentMoveMode moveMode;
     private Vector3 lastRequestedDestination;
     private float lastFireTime = -999f;
+    private float movementResumeTime;
 
     private void Awake()
     {
@@ -88,7 +93,9 @@ public class AgentTeammateController : MonoBehaviour
 
     private void Update()
     {
-        if (moveMode == AgentMoveMode.Follow)
+        navMeshAgent.isStopped = Time.time < movementResumeTime;
+
+        if (moveMode == AgentMoveMode.Follow && !navMeshAgent.isStopped)
         {
             UpdateFollowMovement();
         }
@@ -136,6 +143,7 @@ public class AgentTeammateController : MonoBehaviour
         }
 
         lastFireTime = Time.time;
+        movementResumeTime = Time.time + attackMovePauseSeconds;
 
         Vector3 shootStart = shootOrigin.position;
         Vector3 direction = (worldPosition - shootStart).normalized;
@@ -147,14 +155,7 @@ public class AgentTeammateController : MonoBehaviour
         Quaternion lookRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
         transform.rotation = lookRotation;
 
-        if (characterAnimationController != null)
-        {
-            characterAnimationController.TriggerShoot();
-        }
-        else if (animator != null && !string.IsNullOrEmpty(shootTrigger))
-        {
-            animator.SetTrigger(shootTrigger);
-        }
+        TriggerShootAnimation();
 
         if (muzzleFlash != null)
         {
@@ -163,6 +164,11 @@ public class AgentTeammateController : MonoBehaviour
 
         if (Physics.Raycast(shootStart, direction, out RaycastHit hit, attackRange, attackMask, QueryTriggerInteraction.Ignore))
         {
+            if (hitImpactEffect != null)
+            {
+                Instantiate(hitImpactEffect, hit.point, Quaternion.LookRotation(hit.normal));
+            }
+
             ObjectHealth objectHealth = hit.collider.GetComponentInParent<ObjectHealth>();
             if (objectHealth != null)
             {
@@ -178,6 +184,49 @@ public class AgentTeammateController : MonoBehaviour
                 }
 
                 objectHealth.TakeDamage(damage);
+                Debug.Log($"[AgentTeammateController] Hit {hit.collider.name}, material={objectHealth.materialType}, damage={damage}");
+            }
+            else
+            {
+                Debug.Log($"[AgentTeammateController] Hit {hit.collider.name}, but no ObjectHealth found.");
+            }
+        }
+        else
+        {
+            Debug.Log("[AgentTeammateController] Attack raycast did not hit anything.");
+        }
+    }
+
+    private void TriggerShootAnimation()
+    {
+        if (characterAnimationController != null)
+        {
+            characterAnimationController.TriggerShoot();
+
+            if (forcePlayShootState)
+            {
+                characterAnimationController.ForcePlayState(shootStateName);
+            }
+
+            return;
+        }
+
+        if (animator == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(shootTrigger))
+        {
+            animator.SetTrigger(shootTrigger);
+        }
+
+        if (forcePlayShootState)
+        {
+            int stateHash = Animator.StringToHash(shootStateName);
+            if (animator.HasState(0, stateHash))
+            {
+                animator.CrossFadeInFixedTime(stateHash, 0.02f, 0);
             }
         }
     }
