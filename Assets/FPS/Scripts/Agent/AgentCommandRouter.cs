@@ -4,10 +4,14 @@ public class AgentCommandRouter : MonoBehaviour
 {
     [SerializeField] private AgentTeammateController teammate;
     [SerializeField] private AgentCommandTargetRegistry targetRegistry;
+    [SerializeField] private Camera commandCamera;
+    [SerializeField] private float mouseRayDistance = 200f;
+    [SerializeField] private LayerMask mouseRayMask = ~0;
+    [SerializeField] private float defaultMoveStopDistance = 1.2f;
 
     private static readonly string[] MoveKeywords =
     {
-        "go to", "move to", "goto", "去", "前往", "移动到", "move"
+        "go to", "move to", "goto", "go", "move", "去", "前往", "移动到", "移动"
     };
 
     private static readonly string[] StopKeywords =
@@ -25,6 +29,11 @@ public class AgentCommandRouter : MonoBehaviour
         if (targetRegistry == null)
         {
             targetRegistry = FindObjectOfType<AgentCommandTargetRegistry>();
+        }
+
+        if (commandCamera == null)
+        {
+            commandCamera = Camera.main;
         }
     }
 
@@ -62,21 +71,47 @@ public class AgentCommandRouter : MonoBehaviour
 
     private void HandleMoveCommand(string transcript, string normalized)
     {
-        if (targetRegistry == null)
+        if (teammate == null)
         {
-            Debug.LogWarning("[AgentCommandRouter] Target registry is missing.");
+            Debug.LogWarning("[AgentCommandRouter] Teammate is missing.");
             return;
         }
 
-        AgentCommandTarget target = targetRegistry.FindBestMatch(normalized);
-        if (target == null)
+        AgentCommandTarget target = targetRegistry == null ? null : targetRegistry.FindBestMatch(normalized);
+        if (target != null)
         {
-            Debug.LogWarning($"[AgentCommandRouter] Move command has no target match: {transcript}");
+            teammate.MoveTo(target.WorldPosition, target.StopDistance);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO '{target.GetDisplayName()}'");
             return;
         }
 
-        teammate?.MoveTo(target.WorldPosition, target.StopDistance);
-        Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO '{target.GetDisplayName()}'");
+        if (TryGetMouseRayDestination(out Vector3 destination))
+        {
+            teammate.MoveTo(destination, defaultMoveStopDistance);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO MOUSE RAY {destination}");
+            return;
+        }
+
+        Debug.LogWarning($"[AgentCommandRouter] Move command had no explicit target and mouse raycast failed: {transcript}");
+    }
+
+    private bool TryGetMouseRayDestination(out Vector3 destination)
+    {
+        destination = Vector3.zero;
+
+        if (commandCamera == null)
+        {
+            return false;
+        }
+
+        Ray ray = commandCamera.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hitInfo, mouseRayDistance, mouseRayMask, QueryTriggerInteraction.Ignore))
+        {
+            destination = hitInfo.point;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ContainsAny(string content, string[] keywords)
