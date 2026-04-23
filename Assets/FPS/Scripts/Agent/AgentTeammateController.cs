@@ -27,10 +27,13 @@ public class AgentTeammateController : MonoBehaviour
     [Header("Attack")]
     [SerializeField] private Transform shootOrigin;
     [SerializeField] private float attackRange = 120f;
-    [SerializeField] private int attackDamage = 20;
+    [SerializeField] private int fallbackAttackDamage = 20;
     [SerializeField] private float fireCooldown = 0.35f;
-    [SerializeField] private string shootTrigger = "Shoot";
+    [SerializeField] private string shootTrigger = "shoot";
     [SerializeField] private LayerMask attackMask = ~0;
+    [SerializeField] private ParticleSystem muzzleFlash;
+    [SerializeField] private WeaponDamageTable damageTable;
+    [SerializeField] private WeaponType teammateWeaponType = WeaponType.Auto;
 
     private NavMeshAgent navMeshAgent;
     private AgentMoveMode moveMode;
@@ -70,6 +73,16 @@ public class AgentTeammateController : MonoBehaviour
             {
                 followTarget = player.transform;
             }
+        }
+
+        if (damageTable == null)
+        {
+            damageTable = FindObjectOfType<WeaponDamageTable>();
+        }
+
+        if (damageTable != null)
+        {
+            damageTable.EnsureInitialized();
         }
     }
 
@@ -143,12 +156,28 @@ public class AgentTeammateController : MonoBehaviour
             animator.SetTrigger(shootTrigger);
         }
 
+        if (muzzleFlash != null)
+        {
+            muzzleFlash.Play();
+        }
+
         if (Physics.Raycast(shootStart, direction, out RaycastHit hit, attackRange, attackMask, QueryTriggerInteraction.Ignore))
         {
             ObjectHealth objectHealth = hit.collider.GetComponentInParent<ObjectHealth>();
             if (objectHealth != null)
             {
-                objectHealth.TakeDamage(attackDamage);
+                int damage = fallbackAttackDamage;
+
+                if (damageTable != null)
+                {
+                    damage = damageTable.GetDamage(teammateWeaponType, objectHealth.materialType);
+                    if (damage <= 0)
+                    {
+                        damage = fallbackAttackDamage;
+                    }
+                }
+
+                objectHealth.TakeDamage(damage);
             }
         }
     }

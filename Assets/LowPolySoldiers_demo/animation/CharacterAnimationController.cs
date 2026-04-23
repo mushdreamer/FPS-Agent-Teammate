@@ -5,6 +5,8 @@ public class CharacterAnimationController : MonoBehaviour
 {
     [Tooltip("开启后由本脚本直接读取玩家输入；关闭后可由AI/外部脚本驱动动画。")]
     [SerializeField] private bool usePlayerInput = true;
+    [SerializeField] private string runBoolName = "IsRunning";
+    [SerializeField] private string shootTriggerName = "shoot";
 
     private Animator _animator;
     private int _isRunningHash;
@@ -13,8 +15,8 @@ public class CharacterAnimationController : MonoBehaviour
     private void Awake()
     {
         _animator = GetComponent<Animator>();
-        _isRunningHash = Animator.StringToHash("IsRunning");
-        _shootHash = Animator.StringToHash("Shoot");
+        _isRunningHash = Animator.StringToHash(runBoolName);
+        _shootHash = Animator.StringToHash(shootTriggerName);
     }
 
     private void Update()
