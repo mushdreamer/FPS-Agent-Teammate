@@ -11,18 +11,46 @@ public class AgentTeammateController : MonoBehaviour
         MoveToPoint
     }
 
+    [Header("Movement")]
     [SerializeField] private Transform followTarget;
     [SerializeField] private float repathDistance = 1.2f;
     [SerializeField] private float followStopDistance = 2.5f;
+    [SerializeField] private float navMeshSampleDistance = 2f;
+
+    [Header("Animation")]
+    [SerializeField] private Animator animator;
+    [SerializeField] private string speedParam = "Speed";
+    [SerializeField] private string runParam = "IsRunning";
+    [SerializeField] private float runThreshold = 0.2f;
+
+    [Header("Attack")]
+    [SerializeField] private Transform shootOrigin;
+    [SerializeField] private float attackRange = 120f;
+    [SerializeField] private int attackDamage = 20;
+    [SerializeField] private float fireCooldown = 0.35f;
+    [SerializeField] private string shootTrigger = "Shoot";
+    [SerializeField] private LayerMask attackMask = ~0;
 
     private NavMeshAgent navMeshAgent;
     private AgentMoveMode moveMode;
     private Vector3 lastRequestedDestination;
+    private float lastFireTime = -999f;
 
     private void Awake()
     {
         navMeshAgent = GetComponent<NavMeshAgent>();
         navMeshAgent.stoppingDistance = followStopDistance;
+        navMeshAgent.autoRepath = true;
+
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
+
+        if (shootOrigin == null)
+        {
+            shootOrigin = transform;
+        }
 
         if (followTarget == null)
         {
@@ -40,6 +68,8 @@ public class AgentTeammateController : MonoBehaviour
         {
             UpdateFollowMovement();
         }
+
+        UpdateAnimator();
     }
 
     public void SetFollowMode(bool enabled)
@@ -56,7 +86,7 @@ public class AgentTeammateController : MonoBehaviour
         if (followTarget != null)
         {
             lastRequestedDestination = followTarget.position;
-            navMeshAgent.SetDestination(lastRequestedDestination);
+            MoveToNavMesh(lastRequestedDestination);
         }
     }
 
@@ -65,13 +95,47 @@ public class AgentTeammateController : MonoBehaviour
         moveMode = AgentMoveMode.MoveToPoint;
         navMeshAgent.stoppingDistance = Mathf.Max(0.1f, stopDistance);
         lastRequestedDestination = worldPosition;
-        navMeshAgent.SetDestination(worldPosition);
+        MoveToNavMesh(worldPosition);
     }
 
     public void SetIdleMode()
     {
         moveMode = AgentMoveMode.Idle;
         navMeshAgent.ResetPath();
+    }
+
+    public void AttackAt(Vector3 worldPosition)
+    {
+        if (Time.time - lastFireTime < fireCooldown)
+        {
+            return;
+        }
+
+        lastFireTime = Time.time;
+
+        Vector3 shootStart = shootOrigin.position;
+        Vector3 direction = (worldPosition - shootStart).normalized;
+        if (direction.sqrMagnitude <= 0.0001f)
+        {
+            return;
+        }
+
+        Quaternion lookRotation = Quaternion.LookRotation(new Vector3(direction.x, 0f, direction.z));
+        transform.rotation = lookRotation;
+
+        if (animator != null && !string.IsNullOrEmpty(shootTrigger))
+        {
+            animator.SetTrigger(shootTrigger);
+        }
+
+        if (Physics.Raycast(shootStart, direction, out RaycastHit hit, attackRange, attackMask, QueryTriggerInteraction.Ignore))
+        {
+            ObjectHealth objectHealth = hit.collider.GetComponentInParent<ObjectHealth>();
+            if (objectHealth != null)
+            {
+                objectHealth.TakeDamage(attackDamage);
+            }
+        }
     }
 
     private void UpdateFollowMovement()
@@ -86,8 +150,39 @@ public class AgentTeammateController : MonoBehaviour
 
         if (delta >= repathDistance)
         {
-            navMeshAgent.SetDestination(targetPosition);
+            MoveToNavMesh(targetPosition);
             lastRequestedDestination = targetPosition;
+        }
+    }
+
+    private void MoveToNavMesh(Vector3 targetPosition)
+    {
+        if (NavMesh.SamplePosition(targetPosition, out NavMeshHit navMeshHit, navMeshSampleDistance, NavMesh.AllAreas))
+        {
+            navMeshAgent.SetDestination(navMeshHit.position);
+            return;
+        }
+
+        Debug.LogWarning($"[AgentTeammateController] No valid NavMesh destination near {targetPosition}");
+    }
+
+    private void UpdateAnimator()
+    {
+        if (animator == null)
+        {
+            return;
+        }
+
+        float speed = navMeshAgent.velocity.magnitude;
+
+        if (!string.IsNullOrEmpty(speedParam))
+        {
+            animator.SetFloat(speedParam, speed);
+        }
+
+        if (!string.IsNullOrEmpty(runParam))
+        {
+            animator.SetBool(runParam, speed > runThreshold);
         }
     }
 }

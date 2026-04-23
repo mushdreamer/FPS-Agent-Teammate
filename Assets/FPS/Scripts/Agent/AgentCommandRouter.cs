@@ -14,6 +14,11 @@ public class AgentCommandRouter : MonoBehaviour
         "go to", "move to", "goto", "go", "move", "去", "前往", "移动到", "移动"
     };
 
+    private static readonly string[] AttackKeywords =
+    {
+        "shoot", "fire", "attack", "开火", "射击", "攻击"
+    };
+
     private static readonly string[] StopKeywords =
     {
         "stop", "hold", "stay", "停", "停止", "原地"
@@ -45,6 +50,7 @@ public class AgentCommandRouter : MonoBehaviour
         }
 
         string normalized = transcript.Trim().ToLowerInvariant();
+        AgentCommandTarget explicitTarget = targetRegistry == null ? null : targetRegistry.FindBestMatch(normalized);
 
         if (normalized.Contains("follow") || normalized.Contains("跟随"))
         {
@@ -60,16 +66,22 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
-        if (ContainsAny(normalized, MoveKeywords))
+        if (ContainsAny(normalized, AttackKeywords))
         {
-            HandleMoveCommand(transcript, normalized);
+            HandleAttackCommand(transcript, explicitTarget);
+            return;
+        }
+
+        if (ContainsAny(normalized, MoveKeywords) || explicitTarget != null)
+        {
+            HandleMoveCommand(transcript, explicitTarget);
             return;
         }
 
         Debug.Log($"[AgentCommandRouter] Unhandled command: {transcript}");
     }
 
-    private void HandleMoveCommand(string transcript, string normalized)
+    private void HandleMoveCommand(string transcript, AgentCommandTarget explicitTarget)
     {
         if (teammate == null)
         {
@@ -77,11 +89,10 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
-        AgentCommandTarget target = targetRegistry == null ? null : targetRegistry.FindBestMatch(normalized);
-        if (target != null)
+        if (explicitTarget != null)
         {
-            teammate.MoveTo(target.WorldPosition, target.StopDistance);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO '{target.GetDisplayName()}'");
+            teammate.MoveTo(explicitTarget.WorldPosition, explicitTarget.StopDistance);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO '{explicitTarget.GetDisplayName()}'");
             return;
         }
 
@@ -93,6 +104,31 @@ public class AgentCommandRouter : MonoBehaviour
         }
 
         Debug.LogWarning($"[AgentCommandRouter] Move command had no explicit target and mouse raycast failed: {transcript}");
+    }
+
+    private void HandleAttackCommand(string transcript, AgentCommandTarget explicitTarget)
+    {
+        if (teammate == null)
+        {
+            Debug.LogWarning("[AgentCommandRouter] Teammate is missing.");
+            return;
+        }
+
+        if (explicitTarget != null)
+        {
+            teammate.AttackAt(explicitTarget.WorldPosition);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK '{explicitTarget.GetDisplayName()}'");
+            return;
+        }
+
+        if (TryGetMouseRayDestination(out Vector3 destination))
+        {
+            teammate.AttackAt(destination);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {destination}");
+            return;
+        }
+
+        Debug.LogWarning($"[AgentCommandRouter] Attack command had no explicit target and mouse raycast failed: {transcript}");
     }
 
     private bool TryGetMouseRayDestination(out Vector3 destination)
