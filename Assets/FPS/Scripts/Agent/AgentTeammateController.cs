@@ -12,11 +12,23 @@ public class AgentTeammateController : MonoBehaviour
         Attack
     }
 
+    public enum CombatSupportMode
+    {
+        None,
+        Cover,
+        Assault
+    }
+
     [Header("Movement")]
     [SerializeField] private Transform followTarget;
     [SerializeField] private float repathDistance = 1.2f;
     [SerializeField] private float followStopDistance = 2.5f;
     [SerializeField] private float navMeshSampleDistance = 2f;
+
+    [Header("Path Obstacle Handling")]
+    [SerializeField] private bool clearBlockingObjectsOnPath = true;
+    [SerializeField] private float obstacleCheckDistance = 2.2f;
+    [SerializeField] private float obstacleCheckInterval = 0.35f;
 
     [Header("Animation")]
     [SerializeField] private Animator animator;
@@ -40,15 +52,25 @@ public class AgentTeammateController : MonoBehaviour
     [SerializeField] private WeaponDamageTable damageTable;
     [SerializeField] private WeaponType teammateWeaponType = WeaponType.Auto;
 
+    [Header("Follow Combat Support")]
+    [SerializeField] private CombatSupportMode supportMode = CombatSupportMode.None;
+    [SerializeField] private float supportScanInterval = 0.25f;
+    [SerializeField] private float supportSearchRadius = 60f;
+
     private NavMeshAgent navMeshAgent;
     private AgentMoveMode moveMode;
     private Vector3 lastRequestedDestination;
     private float lastFireTime = -999f;
     private float movementResumeTime;
+    private float nextObstacleCheckTime;
+    private float nextSupportScanTime;
 
     private Vector3 attackPoint;
     private Transform attackTargetTransform;
     private bool usingExplicitAttackTarget;
+
+    private Transform playerTransform;
+    private Camera playerCamera;
 
     private void Awake()
     {
@@ -85,6 +107,12 @@ public class AgentTeammateController : MonoBehaviour
             }
         }
 
+        playerTransform = followTarget;
+        if (playerTransform != null)
+        {
+            playerCamera = playerTransform.GetComponentInChildren<Camera>();
+        }
+
         if (damageTable == null)
         {
             damageTable = FindObjectOfType<WeaponDamageTable>();
@@ -103,12 +131,14 @@ public class AgentTeammateController : MonoBehaviour
         if (moveMode == AgentMoveMode.Follow && !navMeshAgent.isStopped)
         {
             UpdateFollowMovement();
+            UpdateSupportFire();
         }
         else if (moveMode == AgentMoveMode.Attack)
         {
             UpdateAttackLoop();
         }
 
+        TryClearPathObstacles();
         UpdateAnimator();
     }
 
@@ -129,6 +159,23 @@ public class AgentTeammateController : MonoBehaviour
             lastRequestedDestination = followTarget.position;
             MoveToNavMesh(lastRequestedDestination);
         }
+    }
+
+    public void SetSupportMode(CombatSupportMode mode)
+    {
+        supportMode = mode;
+
+        if (mode != CombatSupportMode.None && moveMode != AgentMoveMode.Follow)
+        {
+            SetFollowMode(true);
+        }
+
+        Debug.Log($"[AgentTeammateController] Support mode set to {supportMode}");
+    }
+
+    public CombatSupportMode GetSupportMode()
+    {
+        return supportMode;
     }
 
     public void MoveTo(Vector3 worldPosition, float stopDistance)
@@ -238,6 +285,84 @@ public class AgentTeammateController : MonoBehaviour
         AttackAt(attackPoint);
     }
 
+    private void UpdateSupportFire()
+    {
+        if (supportMode == CombatSupportMode.None || Time.time < nextSupportScanTime)
+        {
+            return;
+        }
+
+        nextSupportScanTime = Time.time + supportScanInterval;
+
+        bool playerIsAttacking = Input.GetButton("Fire1") || Input.GetMouseButton(0);
+        if (!playerIsAttacking)
+        {
+            return;
+        }
+
+        ObjectHealth target = null;
+
+        if (supportMode == CombatSupportMode.Cover)
+        {
+            target = FindNearestAliveObject(playerTransform != null ? playerTransform.position : transform.position);
+        }
+        else if (supportMode == CombatSupportMode.Assault)
+        {
+            target = FindPlayerCurrentTarget();
+        }
+
+        if (target != null)
+        {
+            AttackAt(target.transform.position);
+        }
+    }
+
+    private ObjectHealth FindPlayerCurrentTarget()
+    {
+        if (playerCamera == null)
+        {
+            return null;
+        }
+
+        Vector3 screenCenter = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
+        Ray ray = playerCamera.ScreenPointToRay(screenCenter);
+        if (Physics.Raycast(ray, out RaycastHit hit, attackRange, attackMask, QueryTriggerInteraction.Ignore))
+        {
+            ObjectHealth health = hit.collider.GetComponentInParent<ObjectHealth>();
+            if (health != null && health.currentHealth > 0)
+            {
+                return health;
+            }
+        }
+
+        return null;
+    }
+
+    private ObjectHealth FindNearestAliveObject(Vector3 origin)
+    {
+        ObjectHealth[] all = FindObjectsOfType<ObjectHealth>();
+        ObjectHealth nearest = null;
+        float bestSqr = supportSearchRadius * supportSearchRadius;
+
+        for (int i = 0; i < all.Length; i++)
+        {
+            ObjectHealth candidate = all[i];
+            if (candidate == null || candidate.currentHealth <= 0)
+            {
+                continue;
+            }
+
+            float sqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                nearest = candidate;
+            }
+        }
+
+        return nearest;
+    }
+
     private void TriggerShootAnimation()
     {
         if (characterAnimationController != null)
@@ -293,11 +418,59 @@ public class AgentTeammateController : MonoBehaviour
     {
         if (NavMesh.SamplePosition(targetPosition, out NavMeshHit navMeshHit, navMeshSampleDistance, NavMesh.AllAreas))
         {
-            navMeshAgent.SetDestination(navMeshHit.position);
+            NavMeshPath path = new NavMeshPath();
+            if (navMeshAgent.CalculatePath(navMeshHit.position, path) && path.status == NavMeshPathStatus.PathComplete)
+            {
+                navMeshAgent.SetDestination(navMeshHit.position);
+                return;
+            }
+
+            if (clearBlockingObjectsOnPath)
+            {
+                ObjectHealth nearest = FindNearestAliveObject(navMeshHit.position);
+                if (nearest != null)
+                {
+                    StartAttacking(nearest.transform.position, nearest.transform);
+                    Debug.Log("[AgentTeammateController] Path blocked. Switched to attack blocking object.");
+                }
+            }
+
             return;
         }
 
         Debug.LogWarning($"[AgentTeammateController] No valid NavMesh destination near {targetPosition}");
+    }
+
+    private void TryClearPathObstacles()
+    {
+        if (!clearBlockingObjectsOnPath || Time.time < nextObstacleCheckTime)
+        {
+            return;
+        }
+
+        nextObstacleCheckTime = Time.time + obstacleCheckInterval;
+
+        if (moveMode != AgentMoveMode.MoveToPoint && moveMode != AgentMoveMode.Follow)
+        {
+            return;
+        }
+
+        Vector3 direction = navMeshAgent.desiredVelocity;
+        if (direction.sqrMagnitude < 0.05f)
+        {
+            return;
+        }
+
+        Ray ray = new Ray(shootOrigin.position + Vector3.up * 0.2f, direction.normalized);
+        if (Physics.Raycast(ray, out RaycastHit hit, obstacleCheckDistance, attackMask, QueryTriggerInteraction.Ignore))
+        {
+            ObjectHealth health = hit.collider.GetComponentInParent<ObjectHealth>();
+            if (health != null && health.currentHealth > 0)
+            {
+                StartAttacking(health.transform.position, health.transform);
+                Debug.Log($"[AgentTeammateController] Obstacle detected '{health.name}', attacking to clear path.");
+            }
+        }
     }
 
     private void ClearAttackTarget()

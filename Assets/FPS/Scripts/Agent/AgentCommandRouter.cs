@@ -20,6 +20,22 @@ public class AgentCommandRouter : MonoBehaviour
         "shoot", "fire", "attack", "开火", "射击", "攻击"
     };
 
+
+    private static readonly string[] CoverKeywords =
+    {
+        "cover", "cover mode", "掩护", "掩护模式"
+    };
+
+    private static readonly string[] AssaultKeywords =
+    {
+        "assault", "offense", "attack mode", "进攻", "进攻模式"
+    };
+
+    private static readonly string[] DisableSupportKeywords =
+    {
+        "cancel support", "no support", "停止掩护", "停止进攻模式"
+    };
+
     private static readonly string[] StopKeywords =
     {
         "stop", "hold", "stay", "停", "停下", "停止", "原地"
@@ -65,6 +81,30 @@ public class AgentCommandRouter : MonoBehaviour
         {
             teammate?.SetIdleMode();
             Debug.Log($"[AgentCommandRouter] Command '{transcript}' => STOP");
+            return;
+        }
+
+
+        if (ContainsAny(normalized, CoverKeywords))
+        {
+            teammate?.SetSupportMode(AgentTeammateController.CombatSupportMode.Cover);
+            teammate?.SetFollowMode(true);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => FOLLOW + COVER MODE");
+            return;
+        }
+
+        if (ContainsAny(normalized, AssaultKeywords))
+        {
+            teammate?.SetSupportMode(AgentTeammateController.CombatSupportMode.Assault);
+            teammate?.SetFollowMode(true);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => FOLLOW + ASSAULT MODE");
+            return;
+        }
+
+        if (ContainsAny(normalized, DisableSupportKeywords))
+        {
+            teammate?.SetSupportMode(AgentTeammateController.CombatSupportMode.None);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => SUPPORT MODE OFF");
             return;
         }
 
@@ -125,26 +165,87 @@ public class AgentCommandRouter : MonoBehaviour
 
         if (explicitTarget != null)
         {
-            teammate.StartAttacking(explicitTarget.WorldPosition, explicitTarget.transform);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK '{explicitTarget.GetDisplayName()}'");
-            return;
+            ObjectHealth explicitHealth = explicitTarget.GetComponentInParent<ObjectHealth>();
+            if (explicitHealth != null && explicitHealth.currentHealth > 0)
+            {
+                teammate.StartAttacking(explicitTarget.WorldPosition, explicitTarget.transform);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK '{explicitTarget.GetDisplayName()}'");
+                return;
+            }
+
+            ObjectHealth fallback = FindNearestAliveObject(explicitTarget.WorldPosition);
+            if (fallback != null)
+            {
+                teammate.StartAttacking(fallback.transform.position, fallback.transform);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => TARGET HAD NO HEALTH, ATTACK NEAREST '{fallback.name}'");
+                return;
+            }
         }
 
         if (sceneNameTarget != null)
         {
-            teammate.StartAttacking(sceneNameTarget.position, sceneNameTarget);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK SCENE OBJECT '{sceneNameTarget.name}'");
-            return;
+            ObjectHealth sceneHealth = sceneNameTarget.GetComponentInParent<ObjectHealth>();
+            if (sceneHealth != null && sceneHealth.currentHealth > 0)
+            {
+                teammate.StartAttacking(sceneNameTarget.position, sceneNameTarget);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK SCENE OBJECT '{sceneNameTarget.name}'");
+                return;
+            }
+
+            ObjectHealth fallback = FindNearestAliveObject(sceneNameTarget.position);
+            if (fallback != null)
+            {
+                teammate.StartAttacking(fallback.transform.position, fallback.transform);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => SCENE TARGET HAD NO HEALTH, ATTACK NEAREST '{fallback.name}'");
+                return;
+            }
         }
 
         if (TryGetMouseRayHit(out RaycastHit hitInfo))
         {
-            teammate.StartAttacking(hitInfo.point, hitInfo.transform);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {hitInfo.point}");
-            return;
+            ObjectHealth hitHealth = hitInfo.transform.GetComponentInParent<ObjectHealth>();
+            if (hitHealth != null && hitHealth.currentHealth > 0)
+            {
+                teammate.StartAttacking(hitInfo.point, hitInfo.transform);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {hitInfo.point}");
+                return;
+            }
+
+            ObjectHealth fallback = FindNearestAliveObject(hitInfo.point);
+            if (fallback != null)
+            {
+                teammate.StartAttacking(fallback.transform.position, fallback.transform);
+                Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOUSE TARGET HAD NO HEALTH, ATTACK NEAREST '{fallback.name}'");
+                return;
+            }
         }
 
-        Debug.LogWarning($"[AgentCommandRouter] Attack command had no explicit target and mouse raycast failed: {transcript}");
+        Debug.LogWarning($"[AgentCommandRouter] Attack command had no valid living target: {transcript}");
+    }
+
+    private ObjectHealth FindNearestAliveObject(Vector3 origin)
+    {
+        ObjectHealth[] all = FindObjectsOfType<ObjectHealth>();
+        ObjectHealth nearest = null;
+        float bestSqr = float.MaxValue;
+
+        for (int i = 0; i < all.Length; i++)
+        {
+            ObjectHealth candidate = all[i];
+            if (candidate == null || candidate.currentHealth <= 0)
+            {
+                continue;
+            }
+
+            float sqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                nearest = candidate;
+            }
+        }
+
+        return nearest;
     }
 
     private bool TryGetMouseRayHit(out RaycastHit hitInfo)
