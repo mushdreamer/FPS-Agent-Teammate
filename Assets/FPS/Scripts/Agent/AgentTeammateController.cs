@@ -4,12 +4,19 @@ using UnityEngine.AI;
 [RequireComponent(typeof(NavMeshAgent))]
 public class AgentTeammateController : MonoBehaviour
 {
+    private enum AgentMoveMode
+    {
+        Idle,
+        Follow,
+        MoveToPoint
+    }
+
     [SerializeField] private Transform followTarget;
     [SerializeField] private float repathDistance = 1.2f;
     [SerializeField] private float followStopDistance = 2.5f;
 
     private NavMeshAgent navMeshAgent;
-    private bool followMode;
+    private AgentMoveMode moveMode;
     private Vector3 lastRequestedDestination;
 
     private void Awake()
@@ -29,7 +36,47 @@ public class AgentTeammateController : MonoBehaviour
 
     private void Update()
     {
-        if (!followMode || followTarget == null)
+        if (moveMode == AgentMoveMode.Follow)
+        {
+            UpdateFollowMovement();
+        }
+    }
+
+    public void SetFollowMode(bool enabled)
+    {
+        if (!enabled)
+        {
+            SetIdleMode();
+            return;
+        }
+
+        moveMode = AgentMoveMode.Follow;
+        navMeshAgent.stoppingDistance = followStopDistance;
+
+        if (followTarget != null)
+        {
+            lastRequestedDestination = followTarget.position;
+            navMeshAgent.SetDestination(lastRequestedDestination);
+        }
+    }
+
+    public void MoveTo(Vector3 worldPosition, float stopDistance)
+    {
+        moveMode = AgentMoveMode.MoveToPoint;
+        navMeshAgent.stoppingDistance = Mathf.Max(0.1f, stopDistance);
+        lastRequestedDestination = worldPosition;
+        navMeshAgent.SetDestination(worldPosition);
+    }
+
+    public void SetIdleMode()
+    {
+        moveMode = AgentMoveMode.Idle;
+        navMeshAgent.ResetPath();
+    }
+
+    private void UpdateFollowMovement()
+    {
+        if (followTarget == null)
         {
             return;
         }
@@ -41,23 +88,6 @@ public class AgentTeammateController : MonoBehaviour
         {
             navMeshAgent.SetDestination(targetPosition);
             lastRequestedDestination = targetPosition;
-        }
-    }
-
-    public void SetFollowMode(bool enabled)
-    {
-        followMode = enabled;
-
-        if (!enabled)
-        {
-            navMeshAgent.ResetPath();
-            return;
-        }
-
-        if (followTarget != null)
-        {
-            lastRequestedDestination = followTarget.position;
-            navMeshAgent.SetDestination(lastRequestedDestination);
         }
     }
 }
