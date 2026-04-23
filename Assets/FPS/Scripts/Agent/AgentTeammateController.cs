@@ -155,6 +155,7 @@ public class AgentTeammateController : MonoBehaviour
     public void SetIdleMode()
     {
         moveMode = AgentMoveMode.Idle;
+        movementResumeTime = 0f;
         ClearAttackTarget();
         navMeshAgent.ResetPath();
     }
@@ -308,7 +309,8 @@ public class AgentTeammateController : MonoBehaviour
     private void UpdateAnimator()
     {
         float speed = navMeshAgent.velocity.magnitude;
-        bool isRunning = speed > runThreshold;
+        bool movingByPath = navMeshAgent.hasPath && navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance + 0.05f;
+        bool isRunning = speed > runThreshold || movingByPath;
 
         if (characterAnimationController != null)
         {

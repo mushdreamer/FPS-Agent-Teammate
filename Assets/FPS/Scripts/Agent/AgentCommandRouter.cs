@@ -1,3 +1,4 @@
+using System.Text;
 using UnityEngine;
 
 public class AgentCommandRouter : MonoBehaviour
@@ -21,7 +22,7 @@ public class AgentCommandRouter : MonoBehaviour
 
     private static readonly string[] StopKeywords =
     {
-        "stop", "hold", "stay", "停", "停止", "原地"
+        "stop", "hold", "stay", "停", "停下", "停止", "原地"
     };
 
     private void Awake()
@@ -51,6 +52,7 @@ public class AgentCommandRouter : MonoBehaviour
 
         string normalized = transcript.Trim().ToLowerInvariant();
         AgentCommandTarget explicitTarget = targetRegistry == null ? null : targetRegistry.FindBestMatch(normalized);
+        Transform sceneNameTarget = explicitTarget == null ? FindSceneTargetByTranscript(normalized) : null;
 
         if (normalized.Contains("follow") || normalized.Contains("跟随"))
         {
@@ -68,20 +70,20 @@ public class AgentCommandRouter : MonoBehaviour
 
         if (ContainsAny(normalized, AttackKeywords))
         {
-            HandleAttackCommand(transcript, explicitTarget);
+            HandleAttackCommand(transcript, explicitTarget, sceneNameTarget);
             return;
         }
 
-        if (ContainsAny(normalized, MoveKeywords) || explicitTarget != null)
+        if (ContainsAny(normalized, MoveKeywords) || explicitTarget != null || sceneNameTarget != null)
         {
-            HandleMoveCommand(transcript, explicitTarget);
+            HandleMoveCommand(transcript, explicitTarget, sceneNameTarget);
             return;
         }
 
         Debug.Log($"[AgentCommandRouter] Unhandled command: {transcript}");
     }
 
-    private void HandleMoveCommand(string transcript, AgentCommandTarget explicitTarget)
+    private void HandleMoveCommand(string transcript, AgentCommandTarget explicitTarget, Transform sceneNameTarget)
     {
         if (teammate == null)
         {
@@ -96,17 +98,24 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
-        if (TryGetMouseRayDestination(out Vector3 destination))
+        if (sceneNameTarget != null)
         {
-            teammate.MoveTo(destination, defaultMoveStopDistance);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO MOUSE RAY {destination}");
+            teammate.MoveTo(sceneNameTarget.position, defaultMoveStopDistance);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO SCENE OBJECT '{sceneNameTarget.name}'");
+            return;
+        }
+
+        if (TryGetMouseRayHit(out RaycastHit hitInfo))
+        {
+            teammate.MoveTo(hitInfo.point, defaultMoveStopDistance);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => MOVE TO MOUSE RAY {hitInfo.point}");
             return;
         }
 
         Debug.LogWarning($"[AgentCommandRouter] Move command had no explicit target and mouse raycast failed: {transcript}");
     }
 
-    private void HandleAttackCommand(string transcript, AgentCommandTarget explicitTarget)
+    private void HandleAttackCommand(string transcript, AgentCommandTarget explicitTarget, Transform sceneNameTarget)
     {
         if (teammate == null)
         {
@@ -121,19 +130,26 @@ public class AgentCommandRouter : MonoBehaviour
             return;
         }
 
-        if (TryGetMouseRayDestination(out Vector3 destination))
+        if (sceneNameTarget != null)
         {
-            teammate.StartAttacking(destination);
-            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {destination}");
+            teammate.StartAttacking(sceneNameTarget.position, sceneNameTarget);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK SCENE OBJECT '{sceneNameTarget.name}'");
+            return;
+        }
+
+        if (TryGetMouseRayHit(out RaycastHit hitInfo))
+        {
+            teammate.StartAttacking(hitInfo.point, hitInfo.transform);
+            Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {hitInfo.point}");
             return;
         }
 
         Debug.LogWarning($"[AgentCommandRouter] Attack command had no explicit target and mouse raycast failed: {transcript}");
     }
 
-    private bool TryGetMouseRayDestination(out Vector3 destination)
+    private bool TryGetMouseRayHit(out RaycastHit hitInfo)
     {
-        destination = Vector3.zero;
+        hitInfo = default;
 
         if (commandCamera == null)
         {
@@ -141,13 +157,58 @@ public class AgentCommandRouter : MonoBehaviour
         }
 
         Ray ray = commandCamera.ScreenPointToRay(Input.mousePosition);
-        if (Physics.Raycast(ray, out RaycastHit hitInfo, mouseRayDistance, mouseRayMask, QueryTriggerInteraction.Ignore))
+        return Physics.Raycast(ray, out hitInfo, mouseRayDistance, mouseRayMask, QueryTriggerInteraction.Ignore);
+    }
+
+    private Transform FindSceneTargetByTranscript(string normalizedTranscript)
+    {
+        string normalizedSpeech = SimplifyForNameMatch(normalizedTranscript);
+        if (string.IsNullOrEmpty(normalizedSpeech))
         {
-            destination = hitInfo.point;
-            return true;
+            return null;
         }
 
-        return false;
+        Transform[] transforms = FindObjectsOfType<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            string candidateNormalized = SimplifyForNameMatch(candidate.name);
+            if (string.IsNullOrEmpty(candidateNormalized))
+            {
+                continue;
+            }
+
+            if (normalizedSpeech.Contains(candidateNormalized) || candidateNormalized.Contains(normalizedSpeech))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static string SimplifyForNameMatch(string value)
+    {
+        StringBuilder sb = new StringBuilder(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = char.ToLowerInvariant(value[i]);
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(c);
+            }
+            else if (c == '_' || c == '-' || c == '(' || c == ')' || c == ' ')
+            {
+                continue;
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static bool ContainsAny(string content, string[] keywords)
