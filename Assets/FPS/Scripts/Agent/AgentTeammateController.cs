@@ -8,7 +8,8 @@ public class AgentTeammateController : MonoBehaviour
     {
         Idle,
         Follow,
-        MoveToPoint
+        MoveToPoint,
+        Attack
     }
 
     [Header("Movement")]
@@ -44,6 +45,10 @@ public class AgentTeammateController : MonoBehaviour
     private Vector3 lastRequestedDestination;
     private float lastFireTime = -999f;
     private float movementResumeTime;
+
+    private Vector3 attackPoint;
+    private Transform attackTargetTransform;
+    private bool usingExplicitAttackTarget;
 
     private void Awake()
     {
@@ -93,11 +98,15 @@ public class AgentTeammateController : MonoBehaviour
 
     private void Update()
     {
-        navMeshAgent.isStopped = Time.time < movementResumeTime;
+        navMeshAgent.isStopped = Time.time < movementResumeTime || moveMode == AgentMoveMode.Attack;
 
         if (moveMode == AgentMoveMode.Follow && !navMeshAgent.isStopped)
         {
             UpdateFollowMovement();
+        }
+        else if (moveMode == AgentMoveMode.Attack)
+        {
+            UpdateAttackLoop();
         }
 
         UpdateAnimator();
@@ -113,6 +122,7 @@ public class AgentTeammateController : MonoBehaviour
 
         moveMode = AgentMoveMode.Follow;
         navMeshAgent.stoppingDistance = followStopDistance;
+        ClearAttackTarget();
 
         if (followTarget != null)
         {
@@ -126,12 +136,26 @@ public class AgentTeammateController : MonoBehaviour
         moveMode = AgentMoveMode.MoveToPoint;
         navMeshAgent.stoppingDistance = Mathf.Max(0.1f, stopDistance);
         lastRequestedDestination = worldPosition;
+        ClearAttackTarget();
         MoveToNavMesh(worldPosition);
+    }
+
+    public void StartAttacking(Vector3 worldPosition, Transform explicitTarget = null)
+    {
+        moveMode = AgentMoveMode.Attack;
+        attackPoint = worldPosition;
+        attackTargetTransform = explicitTarget;
+        usingExplicitAttackTarget = explicitTarget != null;
+        navMeshAgent.ResetPath();
+        movementResumeTime = Time.time + attackMovePauseSeconds;
+
+        AttackAt(attackPoint);
     }
 
     public void SetIdleMode()
     {
         moveMode = AgentMoveMode.Idle;
+        ClearAttackTarget();
         navMeshAgent.ResetPath();
     }
 
@@ -197,6 +221,22 @@ public class AgentTeammateController : MonoBehaviour
         }
     }
 
+    private void UpdateAttackLoop()
+    {
+        if (attackTargetTransform != null)
+        {
+            attackPoint = attackTargetTransform.position;
+        }
+        else if (usingExplicitAttackTarget)
+        {
+            Debug.Log("[AgentTeammateController] Explicit attack target destroyed, stopping attack loop.");
+            SetIdleMode();
+            return;
+        }
+
+        AttackAt(attackPoint);
+    }
+
     private void TriggerShootAnimation()
     {
         if (characterAnimationController != null)
@@ -257,6 +297,12 @@ public class AgentTeammateController : MonoBehaviour
         }
 
         Debug.LogWarning($"[AgentTeammateController] No valid NavMesh destination near {targetPosition}");
+    }
+
+    private void ClearAttackTarget()
+    {
+        attackTargetTransform = null;
+        usingExplicitAttackTarget = false;
     }
 
     private void UpdateAnimator()

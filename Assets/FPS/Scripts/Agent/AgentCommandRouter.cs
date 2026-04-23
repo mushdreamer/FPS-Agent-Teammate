@@ -116,14 +116,14 @@ public class AgentCommandRouter : MonoBehaviour
 
         if (explicitTarget != null)
         {
-            teammate.AttackAt(explicitTarget.WorldPosition);
+            teammate.StartAttacking(explicitTarget.WorldPosition, explicitTarget.transform);
             Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK '{explicitTarget.GetDisplayName()}'");
             return;
         }
 
         if (TryGetMouseRayDestination(out Vector3 destination))
         {
-            teammate.AttackAt(destination);
+            teammate.StartAttacking(destination);
             Debug.Log($"[AgentCommandRouter] Command '{transcript}' => ATTACK MOUSE RAY {destination}");
             return;
         }
