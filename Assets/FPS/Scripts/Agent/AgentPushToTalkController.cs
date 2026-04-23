@@ -8,13 +8,17 @@ public class AgentPushToTalkController : MonoBehaviour
     [SerializeField] private AgentCommandRouter commandRouter;
 
     private IVoiceInputProvider voiceInputProvider;
-    private bool isListening;
 
     private void Awake()
     {
         if (voiceInputProviderBehaviour == null)
         {
-            voiceInputProviderBehaviour = GetComponent<DebugVoiceInputProvider>();
+            voiceInputProviderBehaviour = GetComponent<MicVoiceInputProvider>();
+
+            if (voiceInputProviderBehaviour == null)
+            {
+                voiceInputProviderBehaviour = GetComponent<DebugVoiceInputProvider>();
+            }
         }
 
         voiceInputProvider = voiceInputProviderBehaviour as IVoiceInputProvider;
@@ -40,26 +44,34 @@ public class AgentPushToTalkController : MonoBehaviour
 
     private void StartListening()
     {
-        isListening = true;
-        Debug.Log("[PTT] Listening started...");
-    }
-
-    private void StopListeningAndDispatch()
-    {
-        if (!isListening)
-        {
-            return;
-        }
-
-        isListening = false;
-
         if (voiceInputProvider == null)
         {
             Debug.LogWarning("[PTT] Voice provider is missing.");
             return;
         }
 
-        string transcript = voiceInputProvider.GetTranscript();
+        voiceInputProvider.StartListening();
+        Debug.Log("[PTT] Listening started...");
+    }
+
+    private void StopListeningAndDispatch()
+    {
+        if (voiceInputProvider == null)
+        {
+            Debug.LogWarning("[PTT] Voice provider is missing.");
+            return;
+        }
+
+        if (!voiceInputProvider.IsListening)
+        {
+            return;
+        }
+
+        voiceInputProvider.StopListening(OnTranscriptReady);
+    }
+
+    private void OnTranscriptReady(string transcript)
+    {
         Debug.Log($"[PTT] Listening stopped. Transcript: {transcript}");
         commandRouter?.Route(transcript);
     }

@@ -1,4 +1,8 @@
+using System;
+
 public interface IVoiceInputProvider
 {
-    string GetTranscript();
+    bool IsListening { get; }
+    void StartListening();
+    void StopListening(Action<string> onTranscriptReady);
 }

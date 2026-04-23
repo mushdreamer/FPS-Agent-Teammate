@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class DebugVoiceInputProvider : MonoBehaviour, IVoiceInputProvider
@@ -8,7 +9,14 @@ public class DebugVoiceInputProvider : MonoBehaviour, IVoiceInputProvider
     [Tooltip("读取后自动清空，避免松开V时重复执行上一次指令。")]
     [SerializeField] private bool consumeOnce = true;
 
-    public string GetTranscript()
+    public bool IsListening { get; private set; }
+
+    public void StartListening()
+    {
+        IsListening = true;
+    }
+
+    public void StopListening(Action<string> onTranscriptReady)
     {
         string transcript = simulatedTranscript == null ? string.Empty : simulatedTranscript.Trim();
 
@@ -17,7 +25,8 @@ public class DebugVoiceInputProvider : MonoBehaviour, IVoiceInputProvider
             simulatedTranscript = string.Empty;
         }
 
-        return transcript;
+        IsListening = false;
+        onTranscriptReady?.Invoke(transcript);
     }
 
     public void SetSimulatedTranscript(string value)
